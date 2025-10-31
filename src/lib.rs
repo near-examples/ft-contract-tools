@@ -1,5 +1,5 @@
-use near_sdk::{NearToken, env, json_types::U128, near};
-use near_sdk_contract_tools::{Owner, ft::*, owner::*};
+use near_sdk::{AccountId, NearToken, env, json_types::U128, near};
+use near_sdk_contract_tools::{Owner, ft::*, owner::{self, *}};
 
 #[derive(Default, Owner, FungibleToken)]
 #[near(contract_state)]
@@ -8,20 +8,32 @@ pub struct MyFtContract {}
 #[near]
 impl MyFtContract {
     #[init]
-    pub fn new() -> Self {
+    pub fn new(owner_id: AccountId, total_supply: U128, metadata: ContractMetadata) -> Self {
         let mut contract = Self {};
 
         // Set metadata
-        contract.set_metadata(&ContractMetadata::new("My Fungible Token", "MYFT", 24));
+        contract.set_metadata(&metadata);
 
         // Initialize owner
-        Owner::init(&mut contract, &env::current_account_id());
+        Owner::init(&mut contract, &owner_id);
 
         // Set storage balance bounds
         contract.set_storage_balance_bounds(&StorageBalanceBounds {
             min: NearToken::from_yoctonear(2500000000000000000000),
             max: Some(NearToken::from_yoctonear(2500000000000000000000)),
         });
+
+        let _ = contract.deposit_unchecked(&owner_id, total_supply.0);
+
+        // Nep141Controller::mint(
+        //     &mut contract,
+        //     &Nep141Mint {
+        //         amount: total_supply.0,
+        //         receiver_id: owner_id.into(),
+        //         memo: None,
+        //     },
+        // )
+        // .unwrap_or_else(|e| env::panic_str(&e.to_string()));
 
         contract
     }
