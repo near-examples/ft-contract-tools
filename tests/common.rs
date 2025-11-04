@@ -1,8 +1,8 @@
 use std::sync::LazyLock;
 
 use cargo_near_build::BuildOpts;
-use near_contract_standards::fungible_token::metadata::{FungibleTokenMetadata, FT_METADATA_SPEC};
-use near_sdk::{json_types::U128, AccountId, NearToken};
+use near_contract_standards::fungible_token::metadata::{FT_METADATA_SPEC, FungibleTokenMetadata};
+use near_sdk::{AccountId, NearToken, json_types::U128};
 use near_workspaces::{Account, Contract, DevNetwork, Worker};
 
 const INITIAL_BALANCE: NearToken = NearToken::from_near(30);
@@ -25,6 +25,15 @@ static FUNGIBLE_TOKEN_CONTRACT_WASM: LazyLock<Vec<u8>> = LazyLock::new(|| {
         )
         .as_str(),
     );
+
+    contract_wasm
+});
+
+static DEFI_CONTRACT_WASM: LazyLock<Vec<u8>> = LazyLock::new(|| {
+    let artifact_path = "tests/contracts/defi/res/defi.wasm";
+
+    let contract_wasm = std::fs::read(artifact_path)
+        .expect(format!("Could not read DeFi WASM file from {}", artifact_path).as_str());
 
     contract_wasm
 });
@@ -62,7 +71,7 @@ pub async fn init_accounts(root: &Account) -> anyhow::Result<(Account, Account, 
 pub async fn init_contracts(
     worker: &Worker<impl DevNetwork>,
     initial_balance: U128,
-) -> anyhow::Result<Contract> {
+) -> anyhow::Result<(Contract, Contract)> {
     let ft_contract = worker.dev_deploy(&FUNGIBLE_TOKEN_CONTRACT_WASM).await?;
 
     let res = ft_contract
@@ -85,7 +94,17 @@ pub async fn init_contracts(
         .await?;
     assert!(res.is_success());
 
-    return Ok(ft_contract);
+    let defi_contract = worker.dev_deploy(&DEFI_CONTRACT_WASM).await?;
+
+    let res = defi_contract
+        .call("new")
+        .args_json((ft_contract.id(),))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    return Ok((ft_contract, defi_contract));
 }
 
 pub async fn register_user(contract: &Contract, account_id: &AccountId) -> anyhow::Result<()> {
@@ -93,7 +112,7 @@ pub async fn register_user(contract: &Contract, account_id: &AccountId) -> anyho
         .call("storage_deposit")
         .args_json((account_id, Option::<bool>::None))
         .max_gas()
-        .deposit(NearToken::from_yoctonear(2500000000000000000000))
+        .deposit(NearToken::from_yoctonear(1250000000000000000000))
         .transact()
         .await?;
     println!("Register result: {:?}", res);
