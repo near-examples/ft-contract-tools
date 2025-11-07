@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 use cargo_near_build::BuildOpts;
 use near_contract_standards::fungible_token::metadata::{FT_METADATA_SPEC, FungibleTokenMetadata};
-use near_sdk::{AccountId, NearToken, json_types::U128};
+use near_sdk::{AccountId, NearToken};
 use near_workspaces::{Account, Contract, DevNetwork, Worker};
 
 const INITIAL_BALANCE: NearToken = NearToken::from_near(30);
@@ -70,7 +70,6 @@ pub async fn init_accounts(root: &Account) -> anyhow::Result<(Account, Account, 
 
 pub async fn init_contracts(
     worker: &Worker<impl DevNetwork>,
-    initial_balance: U128,
 ) -> anyhow::Result<(Contract, Contract)> {
     let ft_contract = worker.dev_deploy(&FUNGIBLE_TOKEN_CONTRACT_WASM).await?;
 
@@ -78,7 +77,6 @@ pub async fn init_contracts(
         .call("new")
         .args_json((
             ft_contract.id(),
-            initial_balance,
             FungibleTokenMetadata {
                 spec: FT_METADATA_SPEC.to_string(),
                 name: "Example NEAR fungible token".to_string(),
@@ -112,10 +110,9 @@ pub async fn register_user(contract: &Contract, account_id: &AccountId) -> anyho
         .call("storage_deposit")
         .args_json((account_id, Option::<bool>::None))
         .max_gas()
-        .deposit(NearToken::from_yoctonear(1250000000000000000000))
+        .deposit(NearToken::from_yoctonear(2500000000000000000000))
         .transact()
         .await?;
-    println!("Register result: {:?}", res);
     assert!(res.is_success());
 
     Ok(())

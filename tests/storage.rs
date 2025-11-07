@@ -8,12 +8,10 @@ use crate::common::register_user;
 
 #[tokio::test]
 async fn storage_deposit_not_enough_deposit() -> anyhow::Result<()> {
-    let initial_balance = U128::from(NearToken::from_near(10000).as_yoctonear());
-
     let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
     let (alice, _, _, _) = init_accounts(&root).await?;
-    let (ft_contract, _) = init_contracts(&worker, initial_balance).await?;
+    let (ft_contract, _) = init_contracts(&worker).await?;
 
     // register alice as a user of the ft contract
     register_user(&ft_contract, alice.id()).await?;
@@ -29,7 +27,7 @@ async fn storage_deposit_not_enough_deposit() -> anyhow::Result<()> {
     let new_account_balance_before_deposit = new_account.view_account().await?.balance;
     let contract_balance_before_deposit = ft_contract.view_account().await?.balance;
 
-    let minimal_deposit = near_sdk::env::storage_byte_cost().saturating_mul(125);
+    let minimal_deposit = near_sdk::env::storage_byte_cost().saturating_mul(250);
     let res = new_account
         .call(ft_contract.id(), "storage_deposit")
         .args(b"{}".to_vec())
@@ -60,12 +58,10 @@ async fn storage_deposit_not_enough_deposit() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn storage_deposit_minimal_deposit() -> anyhow::Result<()> {
-    let initial_balance = U128::from(NearToken::from_near(10000).as_yoctonear());
-
     let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
     let (alice, _, _, _) = init_accounts(&root).await?;
-    let (ft_contract, _) = init_contracts(&worker, initial_balance).await?;
+    let (ft_contract, _) = init_contracts(&worker).await?;
 
     // register alice as a user of the ft contract
     register_user(&ft_contract, alice.id()).await?;
@@ -81,7 +77,7 @@ async fn storage_deposit_minimal_deposit() -> anyhow::Result<()> {
     let new_account_balance_before_deposit = new_account.view_account().await?.balance;
     let contract_balance_before_deposit = ft_contract.view_account().await?.balance;
 
-    let minimal_deposit = near_sdk::env::storage_byte_cost().saturating_mul(125);
+    let minimal_deposit = near_sdk::env::storage_byte_cost().saturating_mul(250);
     new_account
         .call(ft_contract.id(), "storage_deposit")
         .args(b"{}".to_vec())
@@ -117,12 +113,10 @@ async fn storage_deposit_minimal_deposit() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn storage_deposit_refunds_excessive_deposit() -> anyhow::Result<()> {
-    let initial_balance = U128::from(NearToken::from_near(10000).as_yoctonear());
-
     let worker = near_workspaces::sandbox().await?;
-    let (ft_contract, _) = init_contracts(&worker, initial_balance).await?;
+    let (ft_contract, _) = init_contracts(&worker).await?;
 
-    let minimal_deposit = near_sdk::env::storage_byte_cost().saturating_mul(125);
+    let minimal_deposit = near_sdk::env::storage_byte_cost().saturating_mul(250);
 
     // Check the storage balance bounds to make sure we have the right minimal deposit
     //
