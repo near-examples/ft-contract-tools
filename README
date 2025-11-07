@@ -7,7 +7,7 @@ This repository contains an example implementation of a [fungible token](https:/
 
 <br />
 
-## How to Build Locally?
+# How to Build Locally?
 
 Install [`cargo-near`](https://github.com/near/cargo-near) and run:
 
@@ -42,7 +42,7 @@ near call <contract-account-id> new '{}' --accountId <contract-account-id>
 near contract call-function as-transaction <contract-account-id> mint json-args '{"amount": "100000"}' prepaid-gas '100.0 Tgas' attached-deposit '0.0025 NEAR' sign-as <contract-account-id> network-config testnet sign-with-keychain send
 
 # Burn owner's tokens
-near contract call-function as-transaction <contract-account-id> burn json-args '{"amount":"1"}' prepaid-gas '100.0 Tgas' attached-deposit '0 NEAR' sign-as <contract-account-id> network-config testnet sign-with-keychain send
+near contract call-function as-transaction <contract-account-id> burn json-args '{"amount": "1"}' prepaid-gas '100.0 Tgas' attached-deposit '0 NEAR' sign-as <contract-account-id> network-config testnet sign-with-keychain send
 
 # View metadata
 near view <contract-account-id> ft_metadata
@@ -70,6 +70,6 @@ near call <contract-account-id> ft_transfer '{"receiver_id": "<account-id>", "am
 
 - [Smart Contracts Docs](https://docs.near.org/smart-contracts/anatomy)
 - [cargo-near](https://github.com/near/cargo-near) - NEAR smart contract development toolkit for Rust
-- [near CLI](https://near.cli.rs) - Iteract with NEAR blockchain from command line
+- [near CLI](https://near.cli.rs) - Interact with NEAR blockchain from the command line
 - [NEAR StackOverflow](https://stackoverflow.com/questions/tagged/nearprotocol)
 - NEAR DevHub: [Telegram](https://t.me/neardevhub), [Twitter](https://twitter.com/neardevhub)
