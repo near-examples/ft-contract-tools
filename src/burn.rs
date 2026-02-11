@@ -5,7 +5,7 @@ use near_sdk_contract_tools::ft::{Nep141Burn, Nep141Controller};
 #[near]
 impl MyFtContract {
     #[payable]
-    pub fn burn(&mut self, amount: U128) {
+    pub fn burn(&mut self, amount: U128) -> Promise {
         // Assert that the attached deposit is exactly 1 yocto NEAR
         assert_one_yocto();
         // Burn tokens
@@ -20,6 +20,6 @@ impl MyFtContract {
         .unwrap_or_else(|e| env::panic_str(&e.to_string()));
 
         let amount_to_refund = NearToken::from_yoctonear(amount.0);
-        Promise::new(env::predecessor_account_id()).transfer(amount_to_refund);
+        Promise::new(env::predecessor_account_id()).transfer(amount_to_refund)
     }
 }
