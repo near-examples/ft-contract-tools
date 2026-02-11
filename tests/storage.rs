@@ -4,7 +4,7 @@ use near_sdk::serde_json::json;
 use near_sdk::{NearToken, json_types::U128};
 
 #[tokio::test]
-async fn storage_deposit_not_enough_deposit() -> anyhow::Result<()> {
+async fn storage_deposit_not_enough_deposit() -> testresult::TestResult<()> {
     // Initialize the sandbox
     let (sandbox, sandbox_network) = common::init_sandbox().await?;
     // Initialize the accounts
@@ -79,7 +79,7 @@ async fn storage_deposit_not_enough_deposit() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn storage_deposit_minimal_deposit() -> anyhow::Result<()> {
+async fn storage_deposit_minimal_deposit() -> testresult::TestResult<()> {
     // Initialize the sandbox
     let (sandbox, sandbox_network) = common::init_sandbox().await?;
     // Initialize the accounts
@@ -158,7 +158,7 @@ async fn storage_deposit_minimal_deposit() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn storage_deposit_refunds_excessive_deposit() -> anyhow::Result<()> {
+async fn storage_deposit_refunds_excessive_deposit() -> testresult::TestResult<()> {
     // Initialize the sandbox
     let (sandbox, sandbox_network) = common::init_sandbox().await?;
     // Initialize the contracts
