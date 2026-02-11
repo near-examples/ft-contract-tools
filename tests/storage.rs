@@ -284,93 +284,119 @@ async fn storage_deposit_refunds_excessive_deposit() -> testresult::TestResult<(
     Ok(())
 }
 
-// // TODO: Uncomment this tests when the storage unregister is fixed. Tracking issue: https://github.com/near/near-sdk-contract-tools/issues/156
-// // #[tokio::test]
-// // async fn close_account_empty_balance() -> anyhow::Result<()> {
-// //     let initial_balance = U128::from(NearToken::from_near(10000).as_yoctonear());
+// TODO: Uncomment this tests when the storage unregister is fixed. Tracking issue: https://github.com/near/near-sdk-contract-tools/issues/156
+// #[tokio::test]
+// async fn close_account_empty_balance() -> testresult::TestResult<()> {
+//     // Initialize the sandbox
+//     let (sandbox, sandbox_network) = common::init_sandbox().await?;
+//     // Initialize the accounts
+//     let (alice, _, _, _) = common::init_accounts(&sandbox).await?;
+//     // Initialize the contracts
+//     let (ft_contract, _, signer) = common::init_contracts(&sandbox, &sandbox_network).await?;
 
-// //     let worker = near_workspaces::sandbox().await?;
-// //     let root = worker.root_account()?;
-// //     let (alice, _, _, _) = init_accounts(&root).await?;
-// //     let (ft_contract, _) = init_contracts(&worker, initial_balance).await?;
+//     // Register alice account
+//     common::register_user(
+//         &ft_contract,
+//         signer.clone(),
+//         &sandbox_network,
+//         &alice.account_id(),
+//     )
+//     .await?;
 
-// //     // register alice as a user of the ft contract
-// //     register_user(&ft_contract, alice.id()).await?;
+//     // Alice unregisters with empty balance
+//     ft_contract
+//         .call_function("storage_unregister", json!({"force": Option::<bool>::None}))
+//         .transaction()
+//         .deposit(common::ONE_YOCTO)
+//         .with_signer(alice.account_id().clone(), signer.clone())
+//         .send_to(&sandbox_network)
+//         .await?
+//         .assert_success();
 
-// //     let res = alice
-// //         .call(ft_contract.id(), "storage_unregister")
-// //         .args_json((Option::<bool>::None,))
-// //         .max_gas()
-// //         .deposit(ONE_YOCTO)
-// //         .transact()
-// //         .await?;
-// //     assert!(res.json::<bool>()?);
+//     Ok(())
+// }
 
-// //     Ok(())
-// // }
+// #[tokio::test]
+// async fn close_account_non_empty_balance() -> testresult::TestResult<()> {
+//     // Initialize the sandbox
+//     let (sandbox, sandbox_network) = common::init_sandbox().await?;
+//     // Initialize the contracts
+//     let (ft_contract, _, signer) = common::init_contracts(&sandbox, &sandbox_network).await?;
 
-// // #[tokio::test]
-// // async fn close_account_non_empty_balance() -> anyhow::Result<()> {
-// //     let initial_balance = U128::from(NearToken::from_near(10000).as_yoctonear());
+//     // Register ft_contract account
+//     common::register_user(
+//         &ft_contract,
+//         signer.clone(),
+//         &sandbox_network,
+//         &ft_contract.account_id(),
+//     )
+//     .await?;
 
-// //     let worker = near_workspaces::sandbox().await?;
-// //     let root = worker.root_account()?;
-// //     let (alice, _, _, _) = init_accounts(&root).await?;
-// //     let (ft_contract, _) = init_contracts(&worker, initial_balance).await?;
+//     // ft_contract tries to unregister with non-empty balance without force
+//     let res = ft_contract
+//         .call_function("storage_unregister", json!({"force": Option::<bool>::None}))
+//         .transaction()
+//         .deposit(common::ONE_YOCTO)
+//         .with_signer(ft_contract.account_id().clone(), signer.clone())
+//         .send_to(&sandbox_network)
+//         .await?;
+//     let error_msg = format!("{:?}", res);
+//     res.assert_failure();
+//     assert!(
+//         error_msg.contains("Can't unregister the account with the positive balance without force")
+//     );
 
-// //     // register alice as a user of the ft contract
-// //     register_user(&ft_contract, alice.id()).await?;
+//     // ft_contract tries to unregister with non-empty balance with force=false
+//     let res = ft_contract
+//         .call_function("storage_unregister", json!({"force": Some(false)}))
+//         .transaction()
+//         .deposit(common::ONE_YOCTO)
+//         .with_signer(ft_contract.account_id().clone(), signer.clone())
+//         .send_to(&sandbox_network)
+//         .await?;
+//     let error_msg = format!("{:?}", res);
+//     res.assert_failure();
+//     assert!(
+//         error_msg.contains("Can't unregister the account with the positive balance without force")
+//     );
 
-// //     let res = ft_contract
-// //         .call("storage_unregister")
-// //         .args_json((Option::<bool>::None,))
-// //         .max_gas()
-// //         .deposit(ONE_YOCTO)
-// //         .transact()
-// //         .await?;
-// //     assert!(
-// //         format!("{:?}", res)
-// //             .contains("Can't unregister the account with the positive balance without force")
-// //     );
+//     Ok(())
+// }
 
-// //     let res = ft_contract
-// //         .call("storage_unregister")
-// //         .args_json((Some(false),))
-// //         .max_gas()
-// //         .deposit(ONE_YOCTO)
-// //         .transact()
-// //         .await?;
-// //     assert!(
-// //         format!("{:?}", res)
-// //             .contains("Can't unregister the account with the positive balance without force")
-// //     );
+// #[tokio::test]
+// async fn close_account_force_non_empty_balance() -> testresult::TestResult<()> {
+//     // Initialize the sandbox
+//     let (sandbox, sandbox_network) = common::init_sandbox().await?;
+//     // Initialize the contracts
+//     let (ft_contract, _, signer) = common::init_contracts(&sandbox, &sandbox_network).await?;
 
-// //     Ok(())
-// // }
+//     // Register ft_contract account
+//     common::register_user(
+//         &ft_contract,
+//         signer.clone(),
+//         &sandbox_network,
+//         &ft_contract.account_id(),
+//     )
+//     .await?;
 
-// // #[tokio::test]
-// // async fn close_account_force_non_empty_balance() -> anyhow::Result<()> {
-// //     let initial_balance = U128::from(NearToken::from_near(10000).as_yoctonear());
+//     // ft_contract unregisters with force=true, burning all tokens
+//     ft_contract
+//         .call_function("storage_unregister", json!({"force": Some(true)}))
+//         .transaction()
+//         .deposit(common::ONE_YOCTO)
+//         .with_signer(ft_contract.account_id().clone(), signer.clone())
+//         .send_to(&sandbox_network)
+//         .await?
+//         .assert_success();
 
-// //     let worker = near_workspaces::sandbox().await?;
-// //     let root = worker.root_account()?;
-// //     let (alice, _, _, _) = init_accounts(&root).await?;
-// //     let (ft_contract, _) = init_contracts(&worker, initial_balance).await?;
+//     // Check that total supply is now 0
+//     let total_supply: U128 = ft_contract
+//         .call_function("ft_total_supply", ())
+//         .read_only()
+//         .fetch_from(&sandbox_network)
+//         .await?
+//         .data;
+//     assert_eq!(total_supply.0, 0);
 
-// //     // register alice as a user of the ft contract
-// //     register_user(&ft_contract, alice.id()).await?;
-
-// //     let res = ft_contract
-// //         .call("storage_unregister")
-// //         .args_json((Some(true),))
-// //         .max_gas()
-// //         .deposit(ONE_YOCTO)
-// //         .transact()
-// //         .await?;
-// //     assert!(res.is_success());
-
-// //     let res = ft_contract.call("ft_total_supply").view().await?;
-// //     assert_eq!(res.json::<U128>()?.0, 0);
-
-// //     Ok(())
-// // }
+//     Ok(())
+// }

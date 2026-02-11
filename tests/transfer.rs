@@ -433,72 +433,80 @@ async fn transfer_call_promise_panics_for_a_full_refund() -> testresult::TestRes
     Ok(())
 }
 
-// // TODO: Uncomment this test when the storage unregister is fixed. Tracking issue: https://github.com/near/near-sdk-contract-tools/issues/156
-// // #[tokio::test]
-// // async fn transfer_call_with_burned_amount() -> anyhow::Result<()> {
-// //     let initial_balance = U128::from(NearToken::from_near(10000).as_yoctonear());
-// //     let transfer_amount = U128::from(NearToken::from_near(100).as_yoctonear());
+// TODO: Uncomment this test when the storage unregister is fixed. Tracking issue: https://github.com/near/near-sdk-contract-tools/issues/156
+// #[tokio::test]
+// async fn transfer_call_with_burned_amount() -> anyhow::Result<()> {
+//     // Initialize the sandbox
+//     let (sandbox, sandbox_network) = common::init_sandbox().await?;
+//     // Initialize the contracts
+//     let (ft_contract, defi_contract, signer) =
+//         common::init_contracts(&sandbox, &sandbox_network).await?;
 
-// //     let worker = near_workspaces::sandbox().await?;
-// //     let root = worker.root_account()?;
-// //     let (alice, _, _, _) = init_accounts(&root).await?;
-// //     let (ft_contract, defi_contract) = init_contracts(&worker, initial_balance).await?;
+//     let transfer_amount = U128::from(NearToken::from_near(100).as_yoctonear());
 
-// //     // register alice as a user of the ft contract
-// //     register_user(&ft_contract, alice.id()).await?;
+//     // defi contract must be registered as a FT account
+//     common::register_user(
+//         &ft_contract,
+//         signer.clone(),
+//         &sandbox_network,
+//         defi_contract.account_id(),
+//     )
+//     .await?;
 
-// //     // defi contract must be registered as a FT account
-// //     register_user(&ft_contract, defi_contract.id()).await?;
+//     let mint_amount = NearToken::from_near(20);
 
-// //     // root invests in defi by calling `ft_transfer_call`
-// //     let res = ft_contract
-// //         .batch()
-// //         .call(
-// //             Function::new("ft_transfer_call")
-// //                 .args_json((
-// //                     defi_contract.id(),
-// //                     transfer_amount,
-// //                     Option::<String>::None,
-// //                     "10",
-// //                 ))
-// //                 .deposit(ONE_YOCTO)
-// //                 .gas(near_sdk::Gas::from_tgas(150)),
-// //         )
-// //         .call(
-// //             Function::new("storage_unregister")
-// //                 .args_json((Some(true),))
-// //                 .deposit(ONE_YOCTO)
-// //                 .gas(near_sdk::Gas::from_tgas(150)),
-// //         )
-// //         .transact()
-// //         .await?;
-// //     println!("Transfer result: {:?}", res);
-// //     assert!(res.is_success());
+//     // Mint tokens for ft_contract
+//     ft_contract
+//         .call_function("mint", ())
+//         .transaction()
+//         .deposit(mint_amount)
+//         .with_signer(ft_contract.account_id().clone(), signer.clone())
+//         .send_to(&sandbox_network)
+//         .await?
+//         .assert_success();
 
-// //     let logs = res.logs();
-// //     let expected = format!("Account @{} burned {}", ft_contract.id(), 10);
-// //     assert!(logs.len() >= 2);
-// //     assert!(logs.contains(&"The account of the sender was deleted"));
-// //     assert!(logs.contains(&(expected.as_str())));
+//     // root invests in defi by calling `ft_transfer_call`
+//     ft_contract
+//         .call_function(
+//             "ft_transfer_call",
+//             json!({
+//                 "receiver_id": defi_contract.account_id(),
+//                 "amount": transfer_amount,
+//                 "memo": Option::<String>::None,
+//                 "msg": "10",
+//             }),
+//         )
+//         .transaction()
+//         .deposit(ONE_YOCTO)
+//         .with_signer(ft_contract.account_id().clone(), signer.clone())
+//         .send_to(&sandbox_network)
+//         .await?
+//         .assert_success();
 
-// //     match res.receipt_outcomes()[5].clone().into_result()? {
-// //         ValueOrReceiptId::Value(val) => {
-// //             let used_amount = val.json::<U128>()?;
-// //             assert_eq!(used_amount, transfer_amount);
-// //         }
-// //         _ => panic!("Unexpected receipt id"),
-// //     }
-// //     assert!(res.json::<bool>()?);
+//     ft_contract
+//         .call_function("storage_unregister", json!({"force": Some(true)}))
+//         .transaction()
+//         .deposit(ONE_YOCTO)
+//         .with_signer(ft_contract.account_id().clone(), signer.clone())
+//         .send_to(&sandbox_network)
+//         .await?
+//         .assert_success();
 
-// //     let res = ft_contract.call("ft_total_supply").view().await?;
-// //     assert_eq!(res.json::<U128>()?.0, transfer_amount.0 - 10);
-// //     let defi_balance = ft_contract
-// //         .call("ft_balance_of")
-// //         .args_json((defi_contract.id(),))
-// //         .view()
-// //         .await?
-// //         .json::<U128>()?;
-// //     assert_eq!(defi_balance.0, transfer_amount.0 - 10);
+//     let supply: U128 = ft_contract
+//         .call_function("ft_total_supply", ())
+//         .read_only()
+//         .fetch_from(&sandbox_network)
+//         .await?
+//         .data;
+//     assert_eq!(supply.0, transfer_amount.0 - 10);
 
-// //     Ok(())
-// // }
+//     let defi_balance: U128 = ft_contract
+//         .call_function("ft_balance_of", (defi_contract.account_id().clone(),))
+//         .read_only()
+//         .fetch_from(&sandbox_network)
+//         .await?
+//         .data;
+//     assert_eq!(defi_balance.0, transfer_amount.0 - 10);
+
+//     Ok(())
+// }
