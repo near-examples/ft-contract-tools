@@ -2,14 +2,14 @@ pub mod common;
 
 use near_sdk::{NearToken, json_types::U128};
 
-use common::{ONE_YOCTO, init_accounts, init_contracts, register_user};
+use common::{ONE_YOCTO, init_accounts, init_contracts_with_owner, register_user};
 
 #[tokio::test]
 async fn burn_reduces_balance_and_supply() -> anyhow::Result<()> {
     let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
     let (alice, _, _, _) = init_accounts(&root).await?;
-    let (ft_contract, _) = init_contracts(&worker).await?;
+    let (ft_contract, _) = init_contracts_with_owner(&worker, Some(alice.id())).await?;
 
     register_user(&ft_contract, ft_contract.id()).await?;
     register_user(&ft_contract, alice.id()).await?;
@@ -56,7 +56,7 @@ async fn burn_requires_one_yocto() -> anyhow::Result<()> {
     let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
     let (alice, _, _, _) = init_accounts(&root).await?;
-    let (ft_contract, _) = init_contracts(&worker).await?;
+    let (ft_contract, _) = init_contracts_with_owner(&worker, Some(alice.id())).await?;
 
     register_user(&ft_contract, ft_contract.id()).await?;
     register_user(&ft_contract, alice.id()).await?;

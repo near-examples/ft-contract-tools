@@ -71,12 +71,19 @@ pub async fn init_accounts(root: &Account) -> anyhow::Result<(Account, Account, 
 pub async fn init_contracts(
     worker: &Worker<impl DevNetwork>,
 ) -> anyhow::Result<(Contract, Contract)> {
+    init_contracts_with_owner(worker, None).await
+}
+
+pub async fn init_contracts_with_owner(
+    worker: &Worker<impl DevNetwork>,
+    owner_id: Option<&AccountId>,
+) -> anyhow::Result<(Contract, Contract)> {
     let ft_contract = worker.dev_deploy(&FUNGIBLE_TOKEN_CONTRACT_WASM).await?;
 
     let res = ft_contract
         .call("new")
         .args_json((
-            ft_contract.id(),
+            owner_id.unwrap_or(ft_contract.id()),
             FungibleTokenMetadata {
                 spec: FT_METADATA_SPEC.to_string(),
                 name: "Example NEAR fungible token".to_string(),

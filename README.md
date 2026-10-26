@@ -37,12 +37,17 @@ near call <contract-account-id> new '{}' --accountId <contract-account-id>
 ```
 
 ## Basic methods
+
+Only the current contract owner can call `mint` and `burn`. Minting wraps the attached NEAR deposit into tokens for the owner, reserving the minimum storage deposit if the owner is not registered. Burning removes tokens from the owner's balance and refunds the corresponding NEAR. Each token unit represents one yoctoNEAR.
+
+The examples below assume `<owner-account-id>` is the owner set during initialization.
+
 ```bash
 # Mint to owner
-near contract call-function as-transaction <contract-account-id> mint json-args '{"amount": "100000"}' prepaid-gas '100.0 Tgas' attached-deposit '0.0025 NEAR' sign-as <contract-account-id> network-config testnet sign-with-keychain send
+near contract call-function as-transaction <contract-account-id> mint json-args '{}' prepaid-gas '100.0 Tgas' attached-deposit '1 NEAR' sign-as <owner-account-id> network-config testnet sign-with-keychain send
 
 # Burn owner's tokens
-near contract call-function as-transaction <contract-account-id> burn json-args '{"amount": "1"}' prepaid-gas '100.0 Tgas' attached-deposit '0 NEAR' sign-as <contract-account-id> network-config testnet sign-with-keychain send
+near contract call-function as-transaction <contract-account-id> burn json-args '{"amount": "1"}' prepaid-gas '100.0 Tgas' attached-deposit '1 yoctoNEAR' sign-as <owner-account-id> network-config testnet sign-with-keychain send
 
 # View metadata
 near view <contract-account-id> ft_metadata

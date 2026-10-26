@@ -2,7 +2,7 @@ pub mod common;
 
 use near_sdk::{NearToken, json_types::U128};
 
-use common::{init_accounts, init_contracts, register_user};
+use common::{init_accounts, init_contracts_with_owner, register_user};
 
 #[derive(near_sdk::serde::Deserialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -11,11 +11,11 @@ struct StorageBalance {
 }
 
 #[tokio::test]
-async fn mint_registers_caller_and_mints_remaining_deposit() -> anyhow::Result<()> {
+async fn mint_registers_owner_and_mints_remaining_deposit() -> anyhow::Result<()> {
     let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
     let (alice, _, _, _) = init_accounts(&root).await?;
-    let (ft_contract, _) = init_contracts(&worker).await?;
+    let (ft_contract, _) = init_contracts_with_owner(&worker, Some(alice.id())).await?;
 
     let minimal_storage_deposit = near_sdk::env::storage_byte_cost().saturating_mul(250);
     let mint_deposit = NearToken::from_near(3);
@@ -36,11 +36,11 @@ async fn mint_registers_caller_and_mints_remaining_deposit() -> anyhow::Result<(
         .await?
         .json::<U128>()?;
 
-    assert!(
+    assert_eq!(
         mint_deposit
             .saturating_sub(minimal_storage_deposit)
-            .as_near()
-            .eq(&NearToken::from_yoctonear(alice_balance.0).as_near()),
+            .as_yoctonear(),
+        alice_balance.0,
     );
 
     let storage_balance = ft_contract
@@ -60,11 +60,11 @@ async fn mint_registers_caller_and_mints_remaining_deposit() -> anyhow::Result<(
 }
 
 #[tokio::test]
-async fn mint_for_registered_account_mints_full_deposit() -> anyhow::Result<()> {
+async fn mint_for_registered_owner_mints_full_deposit() -> anyhow::Result<()> {
     let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
     let (alice, _, _, _) = init_accounts(&root).await?;
-    let (ft_contract, _) = init_contracts(&worker).await?;
+    let (ft_contract, _) = init_contracts_with_owner(&worker, Some(alice.id())).await?;
 
     register_user(&ft_contract, alice.id()).await?;
 

@@ -1,11 +1,16 @@
 use crate::{MyFtContract, MyFtContractExt};
 use near_sdk::{NearToken, Promise, assert_one_yocto, env, json_types::U128, near};
-use near_sdk_contract_tools::ft::{Nep141Burn, Nep141Controller};
+use near_sdk_contract_tools::{
+    ft::{Nep141Burn, Nep141Controller},
+    owner::Owner,
+};
 
 #[near]
 impl MyFtContract {
     #[payable]
     pub fn burn(&mut self, amount: U128) {
+        self.assert_owner();
+
         // Assert that the attached deposit is exactly 1 yocto NEAR
         assert_one_yocto();
         // Burn tokens

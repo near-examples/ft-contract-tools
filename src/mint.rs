@@ -1,11 +1,13 @@
 use crate::{MyFtContract, MyFtContractExt};
 use near_sdk::{env, near};
-use near_sdk_contract_tools::ft::*;
+use near_sdk_contract_tools::{ft::*, owner::Owner};
 
 #[near]
 impl MyFtContract {
     #[payable]
     pub fn mint(&mut self) {
+        self.assert_owner();
+
         let mut amount_to_mint = env::attached_deposit();
 
         // Check account's storage balance and deposit if necessary
