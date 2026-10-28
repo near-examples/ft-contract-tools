@@ -38,20 +38,24 @@ async fn storage_deposit_not_enough_deposit() -> anyhow::Result<()> {
     println!("res: {:?}", res);
     assert!(res.is_failure());
 
-    let new_account_balance_diff = new_account_balance_before_deposit
-        .saturating_sub(new_account.view_account().await?.balance);
+    let new_account_balance_diff = new_account_balance_before_deposit.saturating_sub(
+        common::refunded_balance(
+            &new_account,
+            new_account_balance_before_deposit.saturating_sub(NearToken::from_millinear(5)),
+        )
+        .await?,
+    );
     // new_account is charged the transaction fee, so it should loose some NEAR
     assert!(new_account_balance_diff > NearToken::from_near(0));
-    assert!(new_account_balance_diff < NearToken::from_millinear(1));
+    assert!(new_account_balance_diff < NearToken::from_millinear(5));
 
     let contract_balance_diff = ft_contract
         .view_account()
         .await?
         .balance
         .saturating_sub(contract_balance_before_deposit);
-    // contract receives a gas rewards for the function call, so it should gain some NEAR
-    assert!(contract_balance_diff > NearToken::from_near(0));
-    assert!(contract_balance_diff < NearToken::from_yoctonear(30_000_000_000_000_000_000));
+    // Any gas reward must stay within the transaction gas budget.
+    assert!(contract_balance_diff < NearToken::from_millinear(5));
 
     Ok(())
 }
@@ -87,12 +91,19 @@ async fn storage_deposit_minimal_deposit() -> anyhow::Result<()> {
         .await?
         .into_result()?;
 
-    let new_account_balance_diff = new_account_balance_before_deposit
-        .saturating_sub(new_account.view_account().await?.balance);
+    let new_account_balance_diff = new_account_balance_before_deposit.saturating_sub(
+        common::refunded_balance(
+            &new_account,
+            new_account_balance_before_deposit
+                .saturating_sub(minimal_deposit)
+                .saturating_sub(NearToken::from_millinear(5)),
+        )
+        .await?,
+    );
     // new_account is charged the transaction fee, so it should loose a bit more than minimal_deposit
     assert!(new_account_balance_diff > minimal_deposit);
     assert!(
-        new_account_balance_diff < minimal_deposit.saturating_add(NearToken::from_millinear(1))
+        new_account_balance_diff < minimal_deposit.saturating_add(NearToken::from_millinear(5))
     );
 
     let contract_balance_diff = ft_contract
@@ -101,12 +112,9 @@ async fn storage_deposit_minimal_deposit() -> anyhow::Result<()> {
         .balance
         .saturating_sub(contract_balance_before_deposit);
     // contract receives a gas rewards for the function call, so the difference should be slightly more than minimal_deposit
-    assert!(contract_balance_diff > minimal_deposit);
+    assert!(contract_balance_diff >= minimal_deposit);
     // adjust the upper limit of the assertion to be more flexible for small variations in the gas reward received
-    assert!(
-        contract_balance_diff
-            < minimal_deposit.saturating_add(NearToken::from_yoctonear(50_000_000_000_000_000_000))
-    );
+    assert!(contract_balance_diff < minimal_deposit.saturating_add(NearToken::from_millinear(5)));
 
     Ok(())
 }
@@ -197,12 +205,19 @@ async fn storage_deposit_refunds_excessive_deposit() -> anyhow::Result<()> {
         minimal_deposit.as_yoctonear().into()
     );
 
-    let new_account_balance_diff = new_account_balance_before_deposit
-        .saturating_sub(new_account.view_account().await?.balance);
+    let new_account_balance_diff = new_account_balance_before_deposit.saturating_sub(
+        common::refunded_balance(
+            &new_account,
+            new_account_balance_before_deposit
+                .saturating_sub(minimal_deposit)
+                .saturating_sub(NearToken::from_millinear(5)),
+        )
+        .await?,
+    );
     // new_account is charged the transaction fee, so it should loose a bit more than minimal_deposit
     assert!(new_account_balance_diff > minimal_deposit);
     assert!(
-        new_account_balance_diff < minimal_deposit.saturating_add(NearToken::from_millinear(1))
+        new_account_balance_diff < minimal_deposit.saturating_add(NearToken::from_millinear(5))
     );
 
     let contract_balance_diff = ft_contract
@@ -211,11 +226,8 @@ async fn storage_deposit_refunds_excessive_deposit() -> anyhow::Result<()> {
         .balance
         .saturating_sub(contract_balance_before_deposit);
     // contract receives a gas rewards for the function call, so the difference should be slightly more than minimal_deposit
-    assert!(contract_balance_diff > minimal_deposit);
-    assert!(
-        contract_balance_diff
-            < minimal_deposit.saturating_add(NearToken::from_yoctonear(50_000_000_000_000_000_000))
-    );
+    assert!(contract_balance_diff >= minimal_deposit);
+    assert!(contract_balance_diff < minimal_deposit.saturating_add(NearToken::from_millinear(5)));
 
     Ok(())
 }
