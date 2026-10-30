@@ -6,50 +6,57 @@ use common::{ONE_YOCTO, init_accounts, init_contracts, register_user};
 
 #[tokio::test]
 async fn simple_transfer() -> anyhow::Result<()> {
-    let worker = near_workspaces::sandbox().await?;
-    let root = worker.root_account()?;
-    let (alice, _, _, _) = init_accounts(&root).await?;
-    let (ft_contract, _) = init_contracts(&worker).await?;
+    let (worker, network, signer) = common::init_sandbox().await?;
 
-    register_user(&ft_contract, ft_contract.id()).await?;
-    register_user(&ft_contract, alice.id()).await?;
+    let (alice, _, _, _) = init_accounts(&worker).await?;
+    let (ft_contract, _) = init_contracts(&worker, &network, signer.clone()).await?;
+
+    register_user(
+        &ft_contract,
+        &network,
+        signer.clone(),
+        ft_contract.account_id(),
+    )
+    .await?;
+    register_user(&ft_contract, &network, signer.clone(), alice.account_id()).await?;
 
     let mint_amount = NearToken::from_near(20);
     let res = ft_contract
-        .call("mint")
-        .args_json(near_sdk::serde_json::json!({}))
+        .call_function("mint", near_sdk::serde_json::json!({}))
+        .transaction()
         .max_gas()
         .deposit(mint_amount)
-        .transact()
+        .with_signer(ft_contract.account_id().clone(), signer.clone())
+        .send_to(&network)
         .await?;
     assert!(res.is_success());
 
     let transfer_amount = NearToken::from_near(10);
-    let res = ft_contract
-        .call("ft_transfer")
-        .args_json((
-            alice.id(),
-            U128::from(transfer_amount.as_yoctonear()),
-            Option::<bool>::None,
-        ))
+    let res = ft_contract.call_function("ft_transfer", near_sdk::serde_json::json!({"receiver_id": alice.account_id(), "amount": U128::from(transfer_amount.as_yoctonear()), "memo": Option::<bool>::None})).transaction()
         .max_gas()
         .deposit(ONE_YOCTO)
-        .transact()
+        .with_signer(ft_contract.account_id().clone(), signer.clone()).send_to(&network)
         .await?;
     assert!(res.is_success());
 
     let ft_contract_balance = ft_contract
-        .call("ft_balance_of")
-        .args_json((ft_contract.id(),))
-        .view()
+        .call_function(
+            "ft_balance_of",
+            near_sdk::serde_json::json!({"account_id": ft_contract.account_id()}),
+        )
+        .read_only::<near_sdk::json_types::U128>()
+        .fetch_from(&network)
         .await?
-        .json::<U128>()?;
+        .data;
     let alice_balance = ft_contract
-        .call("ft_balance_of")
-        .args_json((alice.id(),))
-        .view()
+        .call_function(
+            "ft_balance_of",
+            near_sdk::serde_json::json!({"account_id": alice.account_id()}),
+        )
+        .read_only::<near_sdk::json_types::U128>()
+        .fetch_from(&network)
         .await?
-        .json::<U128>()?;
+        .data;
     assert_eq!(
         mint_amount.saturating_sub(transfer_amount).as_yoctonear(),
         ft_contract_balance.0
@@ -59,128 +66,67 @@ async fn simple_transfer() -> anyhow::Result<()> {
     Ok(())
 }
 
-// TODO: Uncomment this test when the storage unregister is fixed. Tracking issue: https://github.com/near/near-sdk-contract-tools/issues/156
-// #[tokio::test]
-// async fn transfer_call_with_burned_amount() -> anyhow::Result<()> {
-//     let initial_balance = U128::from(NearToken::from_near(10000).as_yoctonear());
-//     let transfer_amount = U128::from(NearToken::from_near(100).as_yoctonear());
-
-//     let worker = near_workspaces::sandbox().await?;
-//     let root = worker.root_account()?;
-//     let (alice, _, _, _) = init_accounts(&root).await?;
-//     let (ft_contract, defi_contract) = init_contracts(&worker, initial_balance).await?;
-
-//     // register alice as a user of the ft contract
-//     register_user(&ft_contract, alice.id()).await?;
-
-//     // defi contract must be registered as a FT account
-//     register_user(&ft_contract, defi_contract.id()).await?;
-
-//     // root invests in defi by calling `ft_transfer_call`
-//     let res = ft_contract
-//         .batch()
-//         .call(
-//             Function::new("ft_transfer_call")
-//                 .args_json((
-//                     defi_contract.id(),
-//                     transfer_amount,
-//                     Option::<String>::None,
-//                     "10",
-//                 ))
-//                 .deposit(ONE_YOCTO)
-//                 .gas(near_sdk::Gas::from_tgas(150)),
-//         )
-//         .call(
-//             Function::new("storage_unregister")
-//                 .args_json((Some(true),))
-//                 .deposit(ONE_YOCTO)
-//                 .gas(near_sdk::Gas::from_tgas(150)),
-//         )
-//         .transact()
-//         .await?;
-//     println!("Transfer result: {:?}", res);
-//     assert!(res.is_success());
-
-//     let logs = res.logs();
-//     let expected = format!("Account @{} burned {}", ft_contract.id(), 10);
-//     assert!(logs.len() >= 2);
-//     assert!(logs.contains(&"The account of the sender was deleted"));
-//     assert!(logs.contains(&(expected.as_str())));
-
-//     match res.receipt_outcomes()[5].clone().into_result()? {
-//         ValueOrReceiptId::Value(val) => {
-//             let used_amount = val.json::<U128>()?;
-//             assert_eq!(used_amount, transfer_amount);
-//         }
-//         _ => panic!("Unexpected receipt id"),
-//     }
-//     assert!(res.json::<bool>()?);
-
-//     let res = ft_contract.call("ft_total_supply").view().await?;
-//     assert_eq!(res.json::<U128>()?.0, transfer_amount.0 - 10);
-//     let defi_balance = ft_contract
-//         .call("ft_balance_of")
-//         .args_json((defi_contract.id(),))
-//         .view()
-//         .await?
-//         .json::<U128>()?;
-//     assert_eq!(defi_balance.0, transfer_amount.0 - 10);
-
-//     Ok(())
-// }
-
 #[tokio::test]
 async fn transfer_call_with_immediate_return_and_no_refund() -> anyhow::Result<()> {
-    let worker = near_workspaces::sandbox().await?;
-    let root = worker.root_account()?;
-    let (alice, _, _, _) = init_accounts(&root).await?;
-    let (ft_contract, defi_contract) = init_contracts(&worker).await?;
+    let (worker, network, signer) = common::init_sandbox().await?;
 
-    // register accounts as users of the ft contract
-    register_user(&ft_contract, ft_contract.id()).await?;
-    register_user(&ft_contract, alice.id()).await?;
+    let (alice, _, _, _) = init_accounts(&worker).await?;
+    let (ft_contract, defi_contract) = init_contracts(&worker, &network, signer.clone()).await?;
+
+    register_user(
+        &ft_contract,
+        &network,
+        signer.clone(),
+        ft_contract.account_id(),
+    )
+    .await?;
+    register_user(&ft_contract, &network, signer.clone(), alice.account_id()).await?;
 
     let mint_amount = NearToken::from_near(20);
     let res = ft_contract
-        .call("mint")
-        .args_json(near_sdk::serde_json::json!({}))
+        .call_function("mint", near_sdk::serde_json::json!({}))
+        .transaction()
         .max_gas()
         .deposit(mint_amount)
-        .transact()
+        .with_signer(ft_contract.account_id().clone(), signer.clone())
+        .send_to(&network)
         .await?;
     assert!(res.is_success());
 
-    // defi contract must be registered as a FT account
-    register_user(&ft_contract, defi_contract.id()).await?;
+    register_user(
+        &ft_contract,
+        &network,
+        signer.clone(),
+        defi_contract.account_id(),
+    )
+    .await?;
 
     let transfer_amount = NearToken::from_near(10);
-    // root invests in defi by calling `ft_transfer_call`
-    let res = ft_contract
-        .call("ft_transfer_call")
-        .args_json((
-            defi_contract.id(),
-            U128::from(transfer_amount.as_yoctonear()),
-            Option::<String>::None,
-            "take-my-money",
-        ))
+    let res = ft_contract.call_function("ft_transfer_call", near_sdk::serde_json::json!({"receiver_id": defi_contract.account_id(), "amount": U128::from(transfer_amount.as_yoctonear()), "memo": Option::<String>::None, "msg": "take-my-money"})).transaction()
         .max_gas()
         .deposit(ONE_YOCTO)
-        .transact()
+        .with_signer(ft_contract.account_id().clone(), signer.clone()).send_to(&network)
         .await?;
     assert!(res.is_success());
 
     let root_balance = ft_contract
-        .call("ft_balance_of")
-        .args_json((ft_contract.id(),))
-        .view()
+        .call_function(
+            "ft_balance_of",
+            near_sdk::serde_json::json!({"account_id": ft_contract.account_id()}),
+        )
+        .read_only::<near_sdk::json_types::U128>()
+        .fetch_from(&network)
         .await?
-        .json::<U128>()?;
+        .data;
     let defi_balance = ft_contract
-        .call("ft_balance_of")
-        .args_json((defi_contract.id(),))
-        .view()
+        .call_function(
+            "ft_balance_of",
+            near_sdk::serde_json::json!({"account_id": defi_contract.account_id()}),
+        )
+        .read_only::<near_sdk::json_types::U128>()
+        .fetch_from(&network)
         .await?
-        .json::<U128>()?;
+        .data;
     assert_eq!(
         mint_amount.saturating_sub(transfer_amount).as_yoctonear(),
         root_balance.0
@@ -192,52 +138,56 @@ async fn transfer_call_with_immediate_return_and_no_refund() -> anyhow::Result<(
 
 #[tokio::test]
 async fn transfer_call_when_called_contract_not_registered_with_ft() -> anyhow::Result<()> {
-    let worker = near_workspaces::sandbox().await?;
-    let root = worker.root_account()?;
-    let (_, _, _, _) = init_accounts(&root).await?;
-    let (ft_contract, defi_contract) = init_contracts(&worker).await?;
+    let (worker, network, signer) = common::init_sandbox().await?;
 
-    register_user(&ft_contract, ft_contract.id()).await?;
+    let (_, _, _, _) = init_accounts(&worker).await?;
+    let (ft_contract, defi_contract) = init_contracts(&worker, &network, signer.clone()).await?;
+
+    register_user(
+        &ft_contract,
+        &network,
+        signer.clone(),
+        ft_contract.account_id(),
+    )
+    .await?;
 
     let mint_amount = NearToken::from_near(20);
     let res = ft_contract
-        .call("mint")
-        .args_json(near_sdk::serde_json::json!({}))
+        .call_function("mint", near_sdk::serde_json::json!({}))
+        .transaction()
         .max_gas()
         .deposit(mint_amount)
-        .transact()
+        .with_signer(ft_contract.account_id().clone(), signer.clone())
+        .send_to(&network)
         .await?;
     assert!(res.is_success());
 
     let transfer_amount = NearToken::from_near(10);
-    // call fails because DEFI contract is not registered as FT user
-    let res = ft_contract
-        .call("ft_transfer_call")
-        .args_json((
-            defi_contract.id(),
-            U128::from(transfer_amount.as_yoctonear()),
-            Option::<String>::None,
-            "take-my-money",
-        ))
+    let res = ft_contract.call_function("ft_transfer_call", near_sdk::serde_json::json!({"receiver_id": defi_contract.account_id(), "amount": U128::from(transfer_amount.as_yoctonear()), "memo": Option::<String>::None, "msg": "take-my-money"})).transaction()
         .max_gas()
         .deposit(ONE_YOCTO)
-        .transact()
+        .with_signer(ft_contract.account_id().clone(), signer.clone()).send_to(&network)
         .await?;
     assert!(res.is_failure());
 
-    // balances remain unchanged
     let root_balance = ft_contract
-        .call("ft_balance_of")
-        .args_json((ft_contract.id(),))
-        .view()
+        .call_function(
+            "ft_balance_of",
+            near_sdk::serde_json::json!({"account_id": ft_contract.account_id()}),
+        )
+        .read_only::<near_sdk::json_types::U128>()
+        .fetch_from(&network)
         .await?
-        .json::<U128>()?;
+        .data;
     let defi_balance = ft_contract
-        .call("ft_balance_of")
-        .args_json((defi_contract.id(),))
-        .view()
+        .call_function(
+            "ft_balance_of",
+            near_sdk::serde_json::json!({"account_id": defi_contract.account_id()}),
+        )
+        .read_only::<near_sdk::json_types::U128>()
+        .fetch_from(&network)
         .await?
-        .json::<U128>()?;
+        .data;
     assert_eq!(mint_amount.as_yoctonear(), root_balance.0);
     assert_eq!(0, defi_balance.0);
 
@@ -246,58 +196,67 @@ async fn transfer_call_when_called_contract_not_registered_with_ft() -> anyhow::
 
 #[tokio::test]
 async fn transfer_call_with_promise_and_refund() -> anyhow::Result<()> {
-    let worker = near_workspaces::sandbox().await?;
-    let root = worker.root_account()?;
-    let (alice, _, _, _) = init_accounts(&root).await?;
-    let (ft_contract, defi_contract) = init_contracts(&worker).await?;
+    let (worker, network, signer) = common::init_sandbox().await?;
 
-    // register alice as a user of the ft contract
-    register_user(&ft_contract, ft_contract.id()).await?;
+    let (alice, _, _, _) = init_accounts(&worker).await?;
+    let (ft_contract, defi_contract) = init_contracts(&worker, &network, signer.clone()).await?;
 
-    // register alice as a user of the ft contract
-    register_user(&ft_contract, alice.id()).await?;
+    register_user(
+        &ft_contract,
+        &network,
+        signer.clone(),
+        ft_contract.account_id(),
+    )
+    .await?;
 
-    // defi contract must be registered as a FT account
-    register_user(&ft_contract, defi_contract.id()).await?;
+    register_user(&ft_contract, &network, signer.clone(), alice.account_id()).await?;
+
+    register_user(
+        &ft_contract,
+        &network,
+        signer.clone(),
+        defi_contract.account_id(),
+    )
+    .await?;
 
     let mint_amount = NearToken::from_near(20);
     let res = ft_contract
-        .call("mint")
-        .args_json(near_sdk::serde_json::json!({}))
+        .call_function("mint", near_sdk::serde_json::json!({}))
+        .transaction()
         .max_gas()
         .deposit(mint_amount)
-        .transact()
+        .with_signer(ft_contract.account_id().clone(), signer.clone())
+        .send_to(&network)
         .await?;
     assert!(res.is_success());
 
     let refund_amount = NearToken::from_near(5);
     let transfer_amount = NearToken::from_near(10);
-    let res = ft_contract
-        .call("ft_transfer_call")
-        .args_json((
-            defi_contract.id(),
-            U128::from(transfer_amount.as_yoctonear()),
-            Option::<String>::None,
-            refund_amount.as_yoctonear().to_string(),
-        ))
+    let res = ft_contract.call_function("ft_transfer_call", near_sdk::serde_json::json!({"receiver_id": defi_contract.account_id(), "amount": U128::from(transfer_amount.as_yoctonear()), "memo": Option::<String>::None, "msg": refund_amount.as_yoctonear().to_string()})).transaction()
         .max_gas()
         .deposit(ONE_YOCTO)
-        .transact()
+        .with_signer(ft_contract.account_id().clone(), signer.clone()).send_to(&network)
         .await?;
     assert!(res.is_success());
 
     let root_balance = ft_contract
-        .call("ft_balance_of")
-        .args_json((ft_contract.id(),))
-        .view()
+        .call_function(
+            "ft_balance_of",
+            near_sdk::serde_json::json!({"account_id": ft_contract.account_id()}),
+        )
+        .read_only::<near_sdk::json_types::U128>()
+        .fetch_from(&network)
         .await?
-        .json::<U128>()?;
+        .data;
     let defi_balance = ft_contract
-        .call("ft_balance_of")
-        .args_json((defi_contract.id(),))
-        .view()
+        .call_function(
+            "ft_balance_of",
+            near_sdk::serde_json::json!({"account_id": defi_contract.account_id()}),
+        )
+        .read_only::<near_sdk::json_types::U128>()
+        .fetch_from(&network)
         .await?
-        .json::<U128>()?;
+        .data;
     assert_eq!(
         mint_amount
             .saturating_sub(transfer_amount)
@@ -315,68 +274,71 @@ async fn transfer_call_with_promise_and_refund() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn transfer_call_promise_panics_for_a_full_refund() -> anyhow::Result<()> {
-    let worker = near_workspaces::sandbox().await?;
-    let root = worker.root_account()?;
-    let (alice, _, _, _) = init_accounts(&root).await?;
-    let (ft_contract, defi_contract) = init_contracts(&worker).await?;
+    let (worker, network, signer) = common::init_sandbox().await?;
 
-    // register alice as a user of the ft contract
-    register_user(&ft_contract, ft_contract.id()).await?;
+    let (alice, _, _, _) = init_accounts(&worker).await?;
+    let (ft_contract, defi_contract) = init_contracts(&worker, &network, signer.clone()).await?;
 
-    // register alice as a user of the ft contract
-    register_user(&ft_contract, alice.id()).await?;
+    register_user(
+        &ft_contract,
+        &network,
+        signer.clone(),
+        ft_contract.account_id(),
+    )
+    .await?;
 
-    // defi contract must be registered as a FT account
-    register_user(&ft_contract, defi_contract.id()).await?;
+    register_user(&ft_contract, &network, signer.clone(), alice.account_id()).await?;
+
+    register_user(
+        &ft_contract,
+        &network,
+        signer.clone(),
+        defi_contract.account_id(),
+    )
+    .await?;
 
     let mint_amount = NearToken::from_near(20);
     let res = ft_contract
-        .call("mint")
-        .args_json(near_sdk::serde_json::json!({}))
+        .call_function("mint", near_sdk::serde_json::json!({}))
+        .transaction()
         .max_gas()
         .deposit(mint_amount)
-        .transact()
+        .with_signer(ft_contract.account_id().clone(), signer.clone())
+        .send_to(&network)
         .await?;
     assert!(res.is_success());
 
     let transfer_amount = NearToken::from_near(10);
-    // root invests in defi by calling `ft_transfer_call`
-    let res = ft_contract
-        .call("ft_transfer_call")
-        .args_json((
-            defi_contract.id(),
-            U128::from(transfer_amount.as_yoctonear()),
-            Option::<String>::None,
-            "no parsey as integer big panic oh no".to_string(),
-        ))
+    let res = ft_contract.call_function("ft_transfer_call", near_sdk::serde_json::json!({"receiver_id": defi_contract.account_id(), "amount": U128::from(transfer_amount.as_yoctonear()), "memo": Option::<String>::None, "msg": "no parsey as integer big panic oh no".to_string()})).transaction()
         .max_gas()
         .deposit(ONE_YOCTO)
-        .transact()
+        .with_signer(ft_contract.account_id().clone(), signer.clone()).send_to(&network)
         .await?;
     assert!(res.is_success());
 
-    let promise_failures = res.receipt_failures();
-    assert_eq!(promise_failures.len(), 1);
-    let failure = promise_failures[0].clone().into_result();
-    if let Err(err) = failure {
-        assert!(format!("{:?}", err).contains("ParseIntError"));
-    } else {
-        unreachable!();
-    }
+    let res = res.into_full().expect("final transaction outcome");
+    let failures = res.failures();
+    assert_eq!(failures.len(), 1);
+    assert!(format!("{:?}", failures[0]).contains("ParseIntError"));
 
-    // balances remain unchanged
     let root_balance = ft_contract
-        .call("ft_balance_of")
-        .args_json((ft_contract.id(),))
-        .view()
+        .call_function(
+            "ft_balance_of",
+            near_sdk::serde_json::json!({"account_id": ft_contract.account_id()}),
+        )
+        .read_only::<near_sdk::json_types::U128>()
+        .fetch_from(&network)
         .await?
-        .json::<U128>()?;
+        .data;
     let defi_balance = ft_contract
-        .call("ft_balance_of")
-        .args_json((defi_contract.id(),))
-        .view()
+        .call_function(
+            "ft_balance_of",
+            near_sdk::serde_json::json!({"account_id": defi_contract.account_id()}),
+        )
+        .read_only::<near_sdk::json_types::U128>()
+        .fetch_from(&network)
         .await?
-        .json::<U128>()?;
+        .data;
     assert_eq!(mint_amount.as_yoctonear(), root_balance.0);
     assert_eq!(0, defi_balance.0);
 
