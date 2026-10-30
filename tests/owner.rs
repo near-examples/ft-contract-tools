@@ -1,10 +1,16 @@
 pub mod common;
 
 use common::{ONE_YOCTO, init_accounts, init_contracts_with_owner, register_user};
+use near_api::{Account, Contract, NetworkConfig, Signer};
 use near_sdk::{NearToken, json_types::U128};
-use near_workspaces::{Account, Contract};
+use std::sync::Arc;
 
-async fn assert_owner_only(contract: &Contract, caller: &Account) -> anyhow::Result<()> {
+async fn assert_owner_only(
+    contract: &Contract,
+    caller: &Account,
+    network: &NetworkConfig,
+    signer: Arc<Signer>,
+) -> anyhow::Result<()> {
     for (method, args, deposit) in [
         (
             "mint",
@@ -17,126 +23,162 @@ async fn assert_owner_only(contract: &Contract, caller: &Account) -> anyhow::Res
             ONE_YOCTO,
         ),
     ] {
-        let result = caller
-            .call(contract.id(), method)
-            .args_json(args)
+        let result = contract
+            .call_function(method, args)
+            .transaction()
             .deposit(deposit)
             .max_gas()
-            .transact()
+            .with_signer(caller.account_id().clone(), signer.clone())
+            .send_to(&network)
             .await?;
-        let error = result
-            .into_result()
-            .expect_err("non-owner must be rejected");
-        assert!(error.to_string().contains("Owner only"), "{error}");
+        let error = result.assert_failure();
+        assert!(format!("{error:?}").contains("Owner only"), "{error}");
     }
     Ok(())
 }
 
-async fn balance(contract: &Contract, account: &Account) -> anyhow::Result<U128> {
+async fn balance(
+    contract: &Contract,
+    account: &Account,
+    network: &NetworkConfig,
+) -> anyhow::Result<U128> {
     Ok(contract
-        .call("ft_balance_of")
-        .args_json((account.id(),))
-        .view()
+        .call_function(
+            "ft_balance_of",
+            near_sdk::serde_json::json!({"account_id": account.account_id()}),
+        )
+        .read_only::<near_sdk::json_types::U128>()
+        .fetch_from(&network)
         .await?
-        .json()?)
+        .data)
 }
 
 #[tokio::test]
 async fn non_owner_cannot_mint_or_burn_even_with_tokens() -> anyhow::Result<()> {
-    let worker = near_workspaces::sandbox().await?;
-    let root = worker.root_account()?;
-    let (owner, alice, _, _) = init_accounts(&root).await?;
-    let (contract, _) = init_contracts_with_owner(&worker, Some(owner.id())).await?;
+    let (worker, network, signer) = common::init_sandbox().await?;
 
-    // A rejected mint must not register an unregistered caller.
-    assert_owner_only(&contract, &alice).await?;
+    let (owner, alice, _, _) = init_accounts(&worker).await?;
+    let (contract, _) =
+        init_contracts_with_owner(&worker, &network, signer.clone(), Some(owner.account_id()))
+            .await?;
+
+    assert_owner_only(&contract, &alice, &network, signer.clone()).await?;
     let storage: Option<near_sdk::serde_json::Value> = contract
-        .call("storage_balance_of")
-        .args_json((alice.id(),))
-        .view()
+        .call_function(
+            "storage_balance_of",
+            near_sdk::serde_json::json!({"account_id": alice.account_id()}),
+        )
+        .read_only()
+        .fetch_from(&network)
         .await?
-        .json()?;
+        .data;
     assert!(storage.is_none());
 
-    register_user(&contract, owner.id()).await?;
-    register_user(&contract, alice.id()).await?;
-    owner
-        .call(contract.id(), "mint")
-        .args_json(near_sdk::serde_json::json!({}))
+    register_user(&contract, &network, signer.clone(), owner.account_id()).await?;
+    register_user(&contract, &network, signer.clone(), alice.account_id()).await?;
+    contract
+        .call_function("mint", near_sdk::serde_json::json!({}))
+        .transaction()
         .deposit(NearToken::from_near(1))
         .max_gas()
-        .transact()
+        .with_signer(owner.account_id().clone(), signer.clone())
+        .send_to(&network)
         .await?
-        .into_result()?;
-    owner
-        .call(contract.id(), "ft_transfer")
-        .args_json((alice.id(), U128(100), Option::<String>::None))
+        .assert_success();
+    contract.call_function("ft_transfer", near_sdk::serde_json::json!({"receiver_id": alice.account_id(), "amount": U128(100), "memo": Option::<String>::None})).transaction()
         .deposit(ONE_YOCTO)
         .max_gas()
-        .transact()
+        .with_signer(owner.account_id().clone(), signer.clone()).send_to(&network)
         .await?
-        .into_result()?;
+        .assert_success();
 
-    let supply_before: U128 = contract.call("ft_total_supply").view().await?.json()?;
-    let owner_before = balance(&contract, &owner).await?;
-    assert_eq!(balance(&contract, &alice).await?, U128(100));
-    assert_owner_only(&contract, &alice).await?;
-    assert_eq!(balance(&contract, &alice).await?, U128(100));
-    assert_eq!(balance(&contract, &owner).await?, owner_before);
-    let supply_after: U128 = contract.call("ft_total_supply").view().await?.json()?;
+    let supply_before: U128 = contract
+        .call_function("ft_total_supply", near_sdk::serde_json::json!({}))
+        .read_only::<near_sdk::json_types::U128>()
+        .fetch_from(&network)
+        .await?
+        .data;
+    let owner_before = balance(&contract, &owner, &network).await?;
+    assert_eq!(balance(&contract, &alice, &network).await?, U128(100));
+    assert_owner_only(&contract, &alice, &network, signer.clone()).await?;
+    assert_eq!(balance(&contract, &alice, &network).await?, U128(100));
+    assert_eq!(balance(&contract, &owner, &network).await?, owner_before);
+    let supply_after: U128 = contract
+        .call_function("ft_total_supply", near_sdk::serde_json::json!({}))
+        .read_only::<near_sdk::json_types::U128>()
+        .fetch_from(&network)
+        .await?
+        .data;
     assert_eq!(supply_after, supply_before);
     Ok(())
 }
 
 #[tokio::test]
 async fn mint_and_burn_follow_transferred_ownership() -> anyhow::Result<()> {
-    let worker = near_workspaces::sandbox().await?;
-    let root = worker.root_account()?;
-    let (owner, new_owner, _, _) = init_accounts(&root).await?;
-    let (contract, _) = init_contracts_with_owner(&worker, Some(owner.id())).await?;
+    let (worker, network, signer) = common::init_sandbox().await?;
 
-    owner
-        .call(contract.id(), "own_propose_owner")
-        .args_json((Some(new_owner.id()),))
+    let (owner, new_owner, _, _) = init_accounts(&worker).await?;
+    let (contract, _) =
+        init_contracts_with_owner(&worker, &network, signer.clone(), Some(owner.account_id()))
+            .await?;
+
+    contract
+        .call_function(
+            "own_propose_owner",
+            near_sdk::serde_json::json!({"account_id": Some(new_owner.account_id())}),
+        )
+        .transaction()
         .deposit(ONE_YOCTO)
         .max_gas()
-        .transact()
+        .with_signer(owner.account_id().clone(), signer.clone())
+        .send_to(&network)
         .await?
-        .into_result()?;
-    assert_owner_only(&contract, &new_owner).await?;
-    new_owner
-        .call(contract.id(), "own_accept_owner")
-        .args_json(near_sdk::serde_json::json!({}))
+        .assert_success();
+    assert_owner_only(&contract, &new_owner, &network, signer.clone()).await?;
+    contract
+        .call_function("own_accept_owner", near_sdk::serde_json::json!({}))
+        .transaction()
         .deposit(ONE_YOCTO)
         .max_gas()
-        .transact()
+        .with_signer(new_owner.account_id().clone(), signer.clone())
+        .send_to(&network)
         .await?
-        .into_result()?;
-    assert_owner_only(&contract, &owner).await?;
-    // The contract account itself has no owner privileges.
-    assert_owner_only(&contract, contract.as_account()).await?;
+        .assert_success();
+    assert_owner_only(&contract, &owner, &network, signer.clone()).await?;
+    assert_owner_only(
+        &contract,
+        &near_api::Account(contract.account_id().clone()),
+        &network,
+        signer.clone(),
+    )
+    .await?;
 
-    register_user(&contract, new_owner.id()).await?;
-    new_owner
-        .call(contract.id(), "mint")
-        .args_json(near_sdk::serde_json::json!({}))
+    register_user(&contract, &network, signer.clone(), new_owner.account_id()).await?;
+    contract
+        .call_function("mint", near_sdk::serde_json::json!({}))
+        .transaction()
         .deposit(NearToken::from_near(1))
         .max_gas()
-        .transact()
+        .with_signer(new_owner.account_id().clone(), signer.clone())
+        .send_to(&network)
         .await?
-        .into_result()?;
-    let before = new_owner.view_account().await?.balance;
-    new_owner
-        .call(contract.id(), "burn")
-        .args_json((U128(NearToken::from_near(1).as_yoctonear()),))
+        .assert_success();
+    let before = new_owner.view().fetch_from(&network).await?.data.amount;
+    contract
+        .call_function(
+            "burn",
+            near_sdk::serde_json::json!({"amount": U128(NearToken::from_near(1).as_yoctonear())}),
+        )
+        .transaction()
         .deposit(ONE_YOCTO)
         .max_gas()
-        .transact()
+        .with_signer(new_owner.account_id().clone(), signer.clone())
+        .send_to(&network)
         .await?
-        .into_result()?;
-    assert_eq!(balance(&contract, &new_owner).await?, U128(0));
+        .assert_success();
+    assert_eq!(balance(&contract, &new_owner, &network).await?, U128(0));
     assert!(
-        new_owner.view_account().await?.balance
+        new_owner.view().fetch_from(&network).await?.data.amount
             > before.saturating_add(NearToken::from_millinear(900))
     );
     Ok(())

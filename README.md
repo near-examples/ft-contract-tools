@@ -29,7 +29,7 @@ cargo near build
 ## How to Test Locally?
 
 ```bash
-cargo test
+cargo test --locked -- --test-threads=2
 ```
 
 ## How to Deploy?
